@@ -53,7 +53,7 @@ end
     function total_emission(χ::Array{<:Unitful.Quantity{<:Real, Unitful.𝐋^(-1)}, 3},
                         temperature::Array{<:Unitful.Temperature, 3},
                         x::Array{<:Unitful.Length, 1},
-                        y::Array{<:Unitful.Length, 1},
+                        y::Threads.@threads Array{<:Unitful.Length, 1},
                         z::Array{<:Unitful.Length, 1},
                         boundary::Array{Int,2},
                         λ::Unitful.Length)
@@ -74,7 +74,7 @@ function total_emission(χ::Array{<:Unitful.Quantity{<:Real, Unitful.𝐋^(-1)},
     columns = nx*ny
 
     # Calculate vertical optical depth for each column
-    Threads.@threads for col=1:columns
+    for col=1:columns
 
         i = 1 + (col-1)÷ny
         j = col - (i-1)*ny
@@ -143,7 +143,7 @@ function field_above_boundary(z::Array{<:Unitful.Length, 1},
     total_boxes = 0
 
     # Calculate mean, min and max J above boundary
-    Threads.@threads for col=1:columns
+    for col=1:columns
 
         i = 1 + (col - 1)÷ny
         j = col - (i - 1)*ny
@@ -194,7 +194,7 @@ function packets_per_box(x::Array{<:Unitful.Length, 1},
 
     packets = zeros(Int64,nx,ny,nz)
 
-    Threads.@threads for box=1:total_boxes
+    for box=1:total_boxes
         i = 1 + (box-1) ÷ (ny*nz)
         j = 1 + (box - (i-1)*ny*nz - 1) ÷ nz
         k = 1 + (box - (i-1)*ny*nz - 1) % nz

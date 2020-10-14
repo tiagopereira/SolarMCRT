@@ -4,6 +4,7 @@ using Random
 using Future # for randjump in rng when using threads
 using Printf
 using ProgressMeter
+using HDF5
 
 """
     function simulate(atmosphere::Atmosphere,
@@ -149,26 +150,23 @@ function simulate(atmosphere::Atmosphere,
     end
 
     # ===================================================================
-    # POST-CALCULATIONS
+    # WRITE TO FILE
     # ===================================================================
-    println("\n--Performing post-calculations...")
+    println("\n--Writing results to file...")
 
     # Collect results from all threads
     surface_intensity = reduce(+, surface_intensity)
     J = reduce(+, J)
-
-    # Evaluate field
     J = J .+ S
-    mean_J, min_J, max_J = field_above_boundary(z, χ, J, τ_max)
-    J_data = [J, S, mean_J, min_J, max_J]
 
-    # Actual number of packets generated ≈ target_packets
-    total_packets = sum(S)
-    total_escaped = sum(surface_intensity)
-    packet_data = [total_packets, total_destroyed.value,
-                   total_escaped, total_scatterings.value]
+    h5write("../Results/output.hdf5", "total_packets", sum(S))
+    h5write("../Results/output.hdf5", "total_destroyed", total_destroyed.value)
+    h5write("../Results/output.hdf5", "total_escaped", sum(surface_intensity))
+    h5write("../Results/output.hdf5", "total_scatterings", total_scatterings.value)
+    h5write("../Results/output.hdf5", "S", S)
+    h5write("../Results/output.hdf5", "J", J)
+    h5write("../Results/output.hdf5", "surface_intensity", surface_intensity)
 
-    return packet_data, J_data, surface_intensity
 end
 
 
