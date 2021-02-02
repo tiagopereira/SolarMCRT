@@ -1,4 +1,62 @@
-include("../src/mcrt.jl")
+include("../../src/radiation.jl")
+import Plots
+import Statistics
+
+function check_parameters(atmosphere::Atmosphere, radiation::Radiation)
+
+      # ==================================================================
+      # LOAD PARAMETERS
+      # ==================================================================
+      z = atmosphere.z
+      x = atmosphere.x
+      y = atmosphere.y
+      T = atmosphere.temperature
+
+      λ = radiation.λ
+      χ = radiation.χ
+      ε = radiation.ε
+      boundary = radiation.boundary
+      packets = radiation.packets
+      intensity_per_packet = radiation.intensity_per_packet
+
+      nλ, nz, nx, ny = size(χ)
+
+      # ==================================================================
+      # AVG PARAMETERS
+      # ==================================================================
+      print("--Calculate averages.......................")
+
+      mean_χ = Array{Float64, 2}(undef, nλ, nz)
+      mean_ε = Array{Float64, 2}(undef, nλ, nz)
+      mean_packets = Array{Float64, 2}(undef, nλ, nz)
+      mean_boundary = Array{Float64, 1}(undef, nλ)
+      mean_T = average_column(T)
+
+      for l=1:nλ
+          mean_χ[l,:] = average_column(χ[l,:,:,:])
+          mean_ε[l,:] = average_column(ε[l,:,:,:])
+          mean_packets[l,:] = average_column(packets[l,:,:,:])
+          mean_boundary[l] = Statistics.mean(boundary)
+      end
+
+      println(" Averages calculated")
+
+      # ==================================================================
+      # PLOT PARAMETERS
+      # ==================================================================
+      plot(mean_χ[1,:], z[1:end-1], xlabel = "̄χ", ylabel = "z", xscale=:log10)
+
+      """ENV["GKSwstype"]="nul"
+
+      p1 = Plots.plot(mean_χ, z, xlabel = "̄χ", ylabel = "z", xscale=:log10)
+      p2 = Plots.plot(mean_ε, z, xlabel = "̄ε", ylabel = "z")
+      p3 = Plots.plot(mean_T, z, xlabel = "temperature", ylabel = "z" )
+      p4 = Plots.plot(mean_packets, z, xlabel = "packets", ylabel = "z")
+      Plots.plot(p1, p2, p3, p4, layout = (2, 2), legend = false)
+      Plots.png("parameters")"""
+end
+
+
 
 function run()
     println("\n", "="^91, "\n", " "^34,
@@ -30,13 +88,8 @@ function run()
         print("--Loading radiation data...................")
         radiation_parameters = collect_radiation_data(atmosphere, λ)
         radiation = Radiation(radiation_parameters...)
-        write_to_file(radiation)
+        #write_to_file(radiation)
         println(@sprintf("Radiation loaded with %.2e packets.", sum(radiation.packets)))
-
-        # ==================================================================
-        # SIMULATION
-        # ==================================================================
-        mcrt(atmosphere, radiation)
 
     elseif mode == "atom"
 
@@ -75,27 +128,18 @@ function run()
             print("--Loading radiation data...................")
             radiation_parameters = collect_radiation_data(atmosphere, atom, populations)
             radiation = Radiation(radiation_parameters...)
-            write_to_file(radiation)
+            #write_to_file(radiation)
             println(@sprintf("Radiation loaded with %.2e packets.", sum(radiation.packets[1,:,:,:])))
-
-            # ==================================================================
-            # SIMULATION
-            # ==================================================================
-            mcrt(atmosphere, radiation)
-
-            """# ==================================================================
-            # CHECK IF POPULATIONS CONVERGE
-            # ==================================================================
-            new_population = get_revised_populations(atom)
-            converged = check_converged(populations, new_populations, error, n)
-
-            if converged
-                println("--Convergence at iteration n = ", n, ". Population-iteration finished.")
-                break
-            end"""
-
         end
     end
+
+    check_parameters(atmosphere, radiation)
+end
+
+
+
+function average_column(array)
+      Statistics.mean(array, dims=[2,3])[:,1,1]
 end
 
 run()
