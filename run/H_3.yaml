@@ -1,0 +1,25 @@
+%YAML 1.1
+---
+# Converted to YAML from atom.h3_Ida2 from MULTI3D
+#
+# Simple toy H model with only two levels and a continuum. 
+# Level energies and line data from NIST.
+element:
+    symbol: H
+    abundance: 12.00
+    atomic_weight: {value: 1.008, unit: u}
+
+levels:
+    lev1:    {energy: {value:        0.0, unit: cm^-1}, g: 2.00, stage: 1, label: 'H I 1S 2SE'}
+    lev2:    {energy: {value:  82259.158, unit: cm^-1}, g: 8.00, stage: 1, label: 'H I 2P 2PO'}
+    lev_ion: {energy: {value: 109677.617, unit: cm^-1}, g: 1.00, stage: 2, label: 'H II continuum'}
+
+lines:
+    - level_start: lev2
+      level_end: lev1
+      f_value: 4.164e-01
+      qcore: 13.0
+      qwing: 3600.0
+      radiative_broadening: 4.70e+08
+      stark_broadening: 1.0
+      nλ_bb: 9

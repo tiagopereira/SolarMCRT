@@ -19,12 +19,12 @@ Reads and slices atmosphere parameters according to
 keyword.input file. Returns atmosphere dimensions, velocity,
 temperature, electron_density and hydrogen populations.
 """
-function collect_atmosphere()
+function collect_atmosphere(input::Dict)
 
     # ===========================================================
     # READ ATMOSPHERE FILE
     # ===========================================================
-    h5open(get_atmosphere_path(), "r") do atmos
+    h5open(input["atmosphere_path"], "r") do atmos
         x = read(atmos, "x")u"m"
         y = read(atmos, "y")u"m"
         z = read(atmos, "z")u"m"
@@ -93,12 +93,12 @@ function collect_atmosphere()
     # original dimensions of data
     nz, nx, ny = size(temperature)
 
-    ze, xe, ye = get_stop()
-    zs, xs, ys = get_start()
-    dz, dx, dy = get_step()
+    ze, xe, ye = input["stop"]
+    zs, xs, ys = input["start"]
+    dz, dx, dy = input["step"]
 
     # Cut z-direction from below
-    if ze != nothing && ze < nz
+    if isa(ze, Number) && ze < nz
         nz = ze
         z = z[1:nz+1]
         velocity_x = velocity_x[1:nz,:,:]
@@ -122,7 +122,7 @@ function collect_atmosphere()
     end
 
     # Cut x-direction from right
-    if xe != nothing && xe < nx
+    if isa(xe, Number) && xe < nx
         nx = xe
         x = x[1:nx+1]
         velocity_x = velocity_x[:,1:nx,:]
@@ -146,7 +146,7 @@ function collect_atmosphere()
     end
 
     # Cut y-direction from right
-    if ye != nothing && ye < ny
+    if isa(ye, Number) && ye < ny
         ny = ye
         y = y[1:ny+1]
         velocity_x = velocity_x[:,:,1:ny]

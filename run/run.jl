@@ -6,29 +6,32 @@ function run()
             "SOLAR ATMOSPHERE MCRT",
             "\n", "="^91, "\n")
 
+    input = YAML.load_file("input.yaml")
+
     # =============================================================================
     # LOAD ATMOSPHERE DATA
     # =============================================================================
     print("--Loading atmosphere data..................")
-    atmosphere_parameters = collect_atmosphere()
+    atmosphere_parameters = collect_atmosphere(input)  ## Needs work, probably feed input to handle inside
     atmosphere = Atmosphere(atmosphere_parameters...)
     atmosphere_size = size(atmosphere.temperature)
     println("Atmosphere loaded with dimensions ", atmosphere_size, ".")
 
-    if background_mode()
-        # =============================================================================
-        # READ CONFIG FILE
-        # =============================================================================
-        output_path = get_output_path()
-        max_scatterings = get_max_scatterings()
-        boundary_config = get_boundary_config()
-        packet_config = get_packet_config()
 
+    # =============================================================================
+    # READ CONFIG FILE
+    # =============================================================================
+    output_path = get_output_path(input)
+    max_scatterings = input["max_scatterings"]
+    boundary_config = [input["depth_criterion"], input["depth_exponent"]]
+    packet_config = [input["target_packets"], input["packet_exponent"]]
+
+    if input["background_mode"]
         # =============================================================================
         # LOAD WAVELENGTH
         # =============================================================================
         print("--Loading wavelength.......................")
-        λ = [get_background_λ()]
+        λ = [input["background_wavelength"] * u"nm"]
         nλ = length(λ)
         println("Wavelength λ = ", λ[1], " loaded.")
 
@@ -62,19 +65,15 @@ function run()
         # =============================================================================
         # READ CONFIG FILE
         # =============================================================================
-        output_path = get_output_path()
-        max_iterations = get_max_iterations()
-        max_scatterings = get_max_scatterings()
-        initial_population_distribution = get_population_distribution()
-        write_rates = get_write_rates()
-        boundary_config = get_boundary_config()
-        packet_config = get_packet_config()
+        max_iterations = input["max_iterations"]
+        initial_population_distribution = input["population_distribution"]
+        write_rates = input["write_rates"]
 
         # =============================================================================
         # LOAD ATOM
         # =============================================================================
         print("--Loading atom.............................")
-        atom_parameters = collect_atom_data(atmosphere)
+        atom_parameters = collect_atom_data(atmosphere, input)
         atom = Atom(atom_parameters...)
         println("Atom loaded with ", atom.nλ , " wavelengths.")
 

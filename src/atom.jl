@@ -1,12 +1,14 @@
 include("io.jl")
 
+
 struct Atom
     density::Array{<:NumberDensity,3}                  # (nz, nx, ny)
     n_levels::Int64
     n_lines::Int64
+    Z::Int64
+    mass::Unitful.Mass
     χ::Array{<:Unitful.Energy,1}
     g::Array{Int64,1}
-    Z::Int64
     f_value::Array{Float64,1}
     λ::Array{Unitful.Length, 1}
     nλ::Int64
@@ -30,81 +32,64 @@ Reads a two-level atom file, samples wavelengths from its
 bound-bound and bound-free transitions and returns all
 relevant data for the simulation.
 """
-function collect_atom_data(atmosphere::Atmosphere)
+function collect_atom_data(atmosphere::Atmosphere, input::Dict)
 
     # ==================================================================
     # READ ATOM FILE
     # ==================================================================
-    atom = h5open(get_atom_path(), "r")
-    Z = read(atom, "Z")
-    density = read(atom, "density")u"m^-3"
-    χ = read(atom, "chi")u"J"
-    χ_ion = read(atom, "chi_ion")u"J"
-    g = read(atom, "g")
-    f_value = read(atom, "f_value")
-    qwing = read(atom, "qwing")
-    qcore = read(atom, "qcore")
-    close(atom)
+    atom = YAML.load_file(input["atom_path"])
+    element = PeriodicTable.elements[Symbol(atom["element"]["symbol"])]
+    Z = element.number
+    mass_unit = uparse(atom["element"]["atomic_weight"]["unit"])
+    mass = atom["element"]["atomic_weight"]["value"] * mass_unit |> u"kg"
+    n_levels = length(atom["levels"]) - 1  # assume last level is continuum
+    n_lines = length(atom["lines"])
 
-    dz, dx, dy = get_step()
-
-    # Only keep every dz-th box in z-direction
-    if dz > 1
-        density = density[1:dz:end,:,:]
+    # From hydrogen number density to element number density
+    element_fraction = 10^(atom["element"]["abundance"] - 12)
+    if size(atmosphere.hydrogen_populations)[end] == 1
+        hydrogen = atmosphere.hydrogen_populations[:, :, :, 1]
+    else
+        hydrogen = sum(atmosphere.hydrogen_populations, dims=4)[:, :, :, 1]
     end
+    density = element_fraction * hydrogen
 
-    # Only keep every dx-th box in x-direction
-    if dx > 1
-        density = density[:,1:dx:end,:]
-    end
 
-    # Only keep every dy-th box in y-direction
-    if dy > 1
-        density = density[:,:,1:dy:end]
-    end
-
-    # ==================================================================
-    # CUT ACCORDING TO LEVEL NUMBER
-    # ==================================================================
-    n_levels = get_nlevels()
-    n_levels_file = length(g)
-
-    n_lines = Int(n_levels*(n_levels-1)/2)
-
-    if n_levels > n_levels_file
-        println("You entered more levels: ", n_levels,
-                " than exist in the file: ", n_levels_file)
-        quit()
-    elseif n_levels < n_levels_file
-        qwing_new = []
-        qcore_new = []
-        f_value_new = []
-
-        s = 1
-        for l=1:n_levels-1
-            append!(f_value_new, f_value[s:s+n_levels-l-1])
-            append!(qcore_new, qcore[s:s+n_levels-l-1])
-            append!(qwing_new, qwing[s:s+n_levels-l-1])
-            s += n_levels_file-l
+    χ = zeros(typeof(1.0u"J"), n_levels + 1)
+    g = zeros(Float64, n_levels + 1)
+    inc = 1
+    for (_, level) in atom["levels"]
+        energy = level["energy"]["value"]
+        unit = uparse(level["energy"]["unit"])
+        if dimension(unit) == dimension(u"m^-1")
+            χ[inc] = (h * c_0 * (energy * unit)) |> u"J"
+        elseif dimension(unit) == dimension(u"J")
+            χ[inc] = energy * unit
+        else
+            error("invalid unit for level energy ($unit)")
         end
-
-        f_value = f_value_new
-        qcore = qcore_new
-        qwing= qwing_new
+        g[inc] = level["g"]
+        inc += 1
     end
+    # Sort by energy
+    idx = sortperm(χ)
+    χ = χ[idx]
+    g = g[idx]
 
-    χ = χ[1:n_levels]
-    append!(χ, χ_ion)
-
-    g = g[1:n_levels]
-    append!(g, 1)
+    f_value = zeros(Float64, n_lines)
+    qwing = similar(f_value)
+    qcore = similar(f_value)
+    f_value .= [line["f_value"] for line in atom["lines"]]
+    qwing .= [line["qwing"] for line in atom["lines"]]
+    qcore .= [line["qcore"] for line in atom["lines"]]
 
     # ==================================================================
     # SAMPLE ATOM TRANSITION WAVELENGTHS
     # ==================================================================
-
-    nλ_bf = get_nλ_bf()
-    nλ_bb = get_nλ_bb()
+    nλ_bf = input["nλ_bf"]
+    nλ_bb = input["nλ_bb"]
+    @assert length(nλ_bf) == n_levels "nλ_bf does not match number of levels in atom"
+    @assert length(nλ_bb) == n_lines "nλ_bb does not match number of lines in atom"
 
     λ = Array{Unitful.Length,1}(undef,0)
     nλ = 0
@@ -147,10 +132,8 @@ function collect_atom_data(atmosphere::Atmosphere)
                         argmin(abs.(bb_bounds[line][2] .- λ))]])
     end
 
-
-
     # ===========================================================
-    # NO NEGAITVE OR INFINITE VALUES
+    # NO NEGATIVE OR INFINITE VALUES
     # ===========================================================
     @test all( Inf .> ustrip(density) .>= 0.0 )
     @test all( Inf .> ustrip.(χ) .>= 0.0 )
@@ -161,8 +144,26 @@ function collect_atom_data(atmosphere::Atmosphere)
         @test all(Inf .> ustrip.(λ[l]) .>= 0.0 )
     end
 
-    return density, n_levels, n_lines, χ, g, Z, f_value, λ, nλ, iλbb, iλbf
+    dz, dx, dy = input["step"]
+
+    # Only keep every dz-th box in z-direction
+    if dz > 1
+        density = density[1:dz:end,:,:]
+    end
+
+    # Only keep every dx-th box in x-direction
+    if dx > 1
+        density = density[:,1:dx:end,:]
+    end
+
+    # Only keep every dy-th box in y-direction
+    if dy > 1
+        density = density[:,:,1:dy:end]
+    end
+
+    return density, n_levels, n_lines, Z, mass, χ, g, f_value, λ, nλ, iλbb, iλbf
 end
+
 
 """
     collect_line_data(atmosphere::Atmosphere)
@@ -172,15 +173,6 @@ bound-bound and bound-free transitions and returns all
 relevant data for the simulation.
 """
 function collect_line_data(atmosphere::Atmosphere, atom::Atom, u::Int, l::Int)
-
-    # ==================================================================
-    # READ ATOM FILE
-    # ==================================================================
-    atom_file = h5open(get_atom_path(), "r")
-    atom_weight = read(atom_file, "atom_weight")u"kg"
-    Z = read(atom_file, "Z")
-    close(atom_file)
-
     # ==================================================================
     # RELEVANT ATMOSPHERE DATA
     # ==================================================================
@@ -204,7 +196,8 @@ function collect_line_data(atmosphere::Atmosphere, atom::Atom, u::Int, l::Int)
 
     line_number = sum((n_levels-l+1):(n_levels-1)) + (u - l)
 
-    lineData = AtomicLine(χ[u], χ[l], χ[end], g[u], g[l], f_value[line_number], atom_weight, Z)
+    lineData = AtomicLine(χ[u], χ[l], χ[end], g[u], g[l],
+                          f_value[line_number], atom.mass, atom.Z)
     unsold_const = const_unsold(lineData)
     quad_stark_const = const_quadratic_stark(lineData)
 
@@ -213,11 +206,11 @@ function collect_line_data(atmosphere::Atmosphere, atom::Atom, u::Int, l::Int)
     γ .+= γ_linear_stark.(electron_density, u, l)
     γ .+= γ_quadratic_stark.(electron_density, temperature, stark_constant=quad_stark_const)
 
-    ΔλD = doppler_width.(lineData.λ0, atom_weight, temperature)
+    ΔλD = doppler_width.(lineData.λ0, atom.mass, temperature)
     damping_const = damping_constant.(γ, ΔλD)
 
     # ===========================================================
-    # NO NEGAITVE OR INFINITE VALUES
+    # NO NEGATIVE OR INFINITE VALUES
     # ===========================================================
     @test all( Inf .> ustrip.(damping_const) .>= 0.0 )
     @test all( Inf .> ustrip.(ΔλD) .>= 0.0 )

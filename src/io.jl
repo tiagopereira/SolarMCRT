@@ -8,6 +8,9 @@ using Random
 using Printf
 using Test
 using HDF5
+import PeriodicTable
+import YAML
+
 
 import PhysicalConstants.CODATA2018: c_0, h, k_B, m_u, m_e, R_∞, ε_0, e
 const E_∞ = R_∞ * c_0 * h
@@ -25,13 +28,7 @@ const hc = h * c_0
 Get the test mode status.
 """
 function background_mode()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("background_mode", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end]
-    j = findfirst("\n", file[i+1:end])[end] + i
-    tm = parse(Bool, file[i+1:j-1])
-    return tm
+    return input["background_mode"]
 end
 
 
@@ -41,23 +38,23 @@ end
 Get the path
  to the output file.
 """
-function get_output_path()
+function get_output_path(input::Dict)
 
 	path = "../out/output_"
 
-	crit, depth_exp = get_boundary_config()
-	target_packets, pct_exp = get_packet_config()
+	crit, depth_exp = [input["depth_criterion"], input["depth_exponent"]]
+	target_packets, pct_exp = [input["target_packets"], input["packet_exponent"]]
 
 	if crit != false
 		path *= string(crit)*"_"*string(depth_exp)
 	end
 
-    if background_mode()
-        path *= "_" * string(ustrip.(get_background_λ())) * "nm_" * string(target_packets) * "pcs.h5"
+    if input["background_mode"]
+        path *= "_" * string(input["background_wavelength"]) * "nm_" * string(target_packets) * "pcs.h5"
     else
-		pop_distrib = get_population_distribution()
-        nλ_bb = get_nλ_bb()
-	    nλ_bf = get_nλ_bf()
+		pop_distrib = input["population_distribution"]
+        nλ_bb = input["nλ_bb"]
+	    nλ_bf = input["nλ_bf"]
 
 		for i=1:length(nλ_bf)
 			path *= "_"*string(nλ_bf[i])
@@ -80,128 +77,9 @@ function get_output_path()
 end
 
 
-"""
-    get_max_iterations()
-
-Get the maximum number of iterations.
-"""
-function get_max_iterations()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("max_iterations", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-    max_iterations = parse(Int64, file[i:j])
-    return max_iterations
-end
-
 # =============================================================================
 # RADIATION
 # =============================================================================
-
-"""
-    get_target_packets()
-
-Get the number of packets to be created for each wavelength.
-"""
-function get_target_packets()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("target_packets", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-    target_packets = parse(Float64, file[i:j])
-    return target_packets
-end
-
-
-
-
-"""
-    get_max_scatterings()
-
-Get the maximum number of scatterings
-before moving on to the next photon.
-"""
-function get_max_scatterings()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("max_scatterings", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-    max_scatterings = parse(Float64, file[i:j])
-    return max_scatterings # move
-end
-
-"""
-    get_cut_off()
-
-Get optical depth where the atmosphere will be cut.
-"""
-function get_boundary_config()
-
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("depth_criterion", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-
-    crit = nothing
-
-    try
-        crit = parse(Float64, file[i:j])
-    catch
-        crit = parse(Bool, file[i:j])
-    end
-
-	input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("depth_exponent", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-	de = parse(Float64, file[i:j])
-
-    return crit, de
-end
-
-function get_packet_config()
-
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("target_packets", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-
-    tp = parse(Float64, file[i:j])
-
-	input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("packet_exponent", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-	pe = parse(Float64, file[i:j])
-
-    return tp, pe
-end
-
-
-"""
-    get_background_λ()
-
-Get the wavelength where to perform the background radiation MC test.
-"""
-function get_background_λ()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("background_wavelength", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-
-    λ = parse(Float64, file[i:j])u"nm"
-
-    return λ
-end
-
 """
     get_Jλ(output_path::String, iteration::Int64, intensity_per_packet::Array{<:UnitsIntensity_λ,1})
 
@@ -217,247 +95,6 @@ function get_Jλ(output_path::String, iteration::Int64, λ)
     return J .* packets_to_intensity
 end
 
-
-function get_nλ_bf()
-
-    nλ_bf = []
-
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("λ_bf", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst(",", file)[end] - 1
-    n = findfirst("\n", file)[end] - 1
-
-    while j < n
-        nλ = parse(Int64, file[i:j])
-        append!(nλ_bf, nλ)
-
-        i = j + 2
-        j = i + findfirst(",", file[i+1:end])[end] - 1
-        n = i + findfirst("\n", file[i+1:end])[end] - 1
-    end
-
-    nλ = parse(Int64, file[i:n])
-    append!(nλ_bf, nλ)
-
-    return nλ_bf
-end
-
-
-function get_nλ_bb()
-
-    nλ_bb = []
-
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("λ_bb", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst(",", file)[end] - 1
-    n = findfirst("\n", file)[end] - 1
-
-    while j < n
-        nλ = parse(Int64, file[i:j])
-        append!(nλ_bb, nλ)
-
-        i = j + 2
-        j = i + findfirst(",", file[i+1:end])[end] - 1
-        n = i + findfirst("\n", file[i+1:end])[end] - 1
-    end
-
-    nλ = parse(Int64, file[i:n])
-    append!(nλ_bb, nλ)
-
-    return nλ_bb
-end
-
-
-# =============================================================================
-# ATOM
-# =============================================================================
-
-"""
-    get_atom_path()
-
-Get path to atom file.
-"""
-function get_atom_path()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("atom_path", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("\"", file)[end]
-    j = findfirst("\"", file[i+1:end])[end] + i
-    atmosphere_path = string(file[i+1:j-1])
-    return atmosphere_path
-end
-
-"""
-    get_nlevels()
-
-Get how many levels to use from atom file.
-"""
-function get_nlevels()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("n_levels", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end] + 1
-    j = findfirst("\n", file)[end] - 1
-    n_levels = parse(Int64, file[i:j])
-    return n_levels
-end
-
-"""
-    get_population_distribution()
-
-Get the initial population configuration (LTE or zero-radiation)
-"""
-function get_population_distribution()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("population_distribution", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("\"", file)[end]
-    j = findfirst("\"", file[i+1:end])[end] + i
-    distribution = string(file[i+1:j-1])
-    return distribution
-end
-
-
-"""
-    get_write_rates()
-
-Check whether to write rates or not.
-"""
-function get_write_rates()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("write_rates", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("=", file)[end]
-    j = findfirst("\n", file[i+1:end])[end] + i
-    tm = parse(Bool, file[i+1:j-1])
-    return tm
-end
-
-# =============================================================================
-# ATMOSPHERE
-# =============================================================================
-"""
-    get_atmosphere_path()
-
-Fetch the atmosphere path.
-"""
-function get_atmosphere_path()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("atmosphere_path", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("\"", file)[end]
-    j = findfirst("\"", file[i+1:end])[end] + i
-    atmosphere_path = string(file[i+1:j-1])
-    return atmosphere_path
-end
-
-"""
-    get_step()
-
-Fetch the step-size in the z, x and y-direction.
-"""
-function get_step()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("step", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("[", file)[end] + 1
-    j = findfirst(",", file)[end] - 1
-    dz = parse(UInt16, file[i:j])
-
-    i = j + 2
-    file = file[i:end]
-    j = findfirst(",", file)[end] - 1
-    dx = parse(UInt16, file[1:j])
-
-    i = j + 2
-    file = file[i:end]
-    j = findfirst("]", file)[end] - 1
-    dy = parse(UInt16, file[1:j])
-    steps = [dz, dx, dy]
-    return steps
-end
-
-"""
-    get_stop()
-
-Fetch the stop indices in the z, x and y-direction.
-"""
-function get_stop()
-
-    nz = nothing
-    nx = nothing
-    ny = nothing
-
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("stop", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("[", file)[end] + 1
-    j = findfirst(",", file)[end] - 1
-
-    try
-        nz = parse(UInt16, file[i:j])
-    catch
-        nz = nothing
-    end
-
-    i = j + 2
-    file = file[i:end]
-    j = findfirst(",", file)[end] - 1
-
-    try
-        nx = parse(UInt16, file[1:j])
-    catch
-        nx = nothing
-    end
-
-    i = j + 2
-    j = findfirst("]", file)[end] - 1
-
-    try
-        ny = parse(UInt16, file[1:j])
-    catch
-        ny = nothing
-    end
-
-    stop = [nz, nx, ny]
-
-    return stop
-end
-
-"""
-    get_start()
-
-Fetch the start indices in the z, x and y-direction.
-"""
-function get_start()
-    input_file = open(f->read(f, String), "../run/keywords.input")
-    i = findfirst("start", input_file)[end] + 1
-    file = input_file[i:end]
-    i = findfirst("[", file)[end] + 1
-    j = findfirst(",", file)[end] - 1
-
-    nz = parse(UInt16, file[i:j])
-
-    i = j + 2
-    file = file[i:end]
-    j = findfirst(",", file)[end] - 1
-
-    nx = parse(UInt16, file[1:j])
-
-    i = j + 2
-    file = file[i:end]
-    j = findfirst("]", file)[end] - 1
-
-    ny = parse(UInt16, file[1:j])
-
-    start = [nz, nx, ny]
-
-    return start
-end
 
 # =============================================================================
 # OUTPUT FILE
