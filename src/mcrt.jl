@@ -674,8 +674,8 @@ function mcrt_continuum(atmosphere::Atmosphere,
         # Reset counters
         fill!(J_λ, 0.0)
         fill!(I0_λ, 0.0)
-        total_destroyed = Threads.Atomic{Int64}(0)
-        total_scatterings = Threads.Atomic{Int64}(0)
+        total_destroyed = 0
+        total_scatterings = 0
 
         # Pick out wavelength data
         packets_λ = packets[λi,:,:,:]
@@ -686,22 +686,9 @@ function mcrt_continuum(atmosphere::Atmosphere,
 
         println("\n--[",λi,"/",nλ, "]        ", @sprintf("λ = %.3f nm", ustrip(λ[λi])))
 
-        # Create ProgressMeter working with threads
-        p = Progress(ny); update!(p,0)
-        jj = Threads.Atomic{Int}(0)
-        l = Threads.SpinLock()
-
         # Go through all boxes
-        et = @elapsed Threads.@threads for j=1:ny
-
-            # Advance ProgressMeter
-            Threads.atomic_add!(jj, 1)
-            Threads.lock(l); update!(p, jj[])
-            Threads.unlock(l)
-
-            local_destroyed = 0
-            local_scattered = 0
-
+        p = ProgressMeter.Progress(ny, desc="Sending packets through all boxes")
+        Threads.@threads for j=1:ny
             for i=1:nx
                 for k=1:boundary_λ[i,j]
 
@@ -739,10 +726,10 @@ function mcrt_continuum(atmosphere::Atmosphere,
                                 break
                             # Check if destroyed in next particle interaction
                             elseif rand() < ε_λ[box_id...]
-                                local_destroyed += 1
+                                total_destroyed += 1
                                 break
                             end
-                            local_scattered += 1
+                            total_scatterings += 1
 
                         end
                     end
@@ -751,8 +738,7 @@ function mcrt_continuum(atmosphere::Atmosphere,
                     J_λ[k,i,j] = packets_λ[k,i,j]
                 end
             end
-            Threads.atomic_add!(total_destroyed, local_destroyed)
-            Threads.atomic_add!(total_destroyed, local_scattered)
+            ProgressMeter.next!(p)
         end
 
         # ===================================================================
@@ -761,10 +747,10 @@ function mcrt_continuum(atmosphere::Atmosphere,
         h5open(output_path, "r+") do file
             file["J"][iteration,λi,:,:,:] = J_λ
             file["I0"][iteration,λi,:,:,:] = I0_λ
-            file["total_destroyed"][iteration,λi] = total_destroyed.value
-            file["total_scatterings"][iteration,λi] = total_scatterings.value
-            file["total_destroyed"][iteration,λi] = total_destroyed.value
-            file["time"][iteration,λi] = et
+            # These are not thread-safe yet
+            #file["total_destroyed"][iteration,λi] = total_destroyed
+            #file["total_scatterings"][iteration,λi] = total_scatterings
+            #file["time"][iteration,λi] = et
         end
     end
 end
@@ -881,13 +867,13 @@ function scatter_packet_continuum(x::Array{<:Unitful.Length, 1},
         end
 
         # Add to radiation field
-        J[box_id...] += 1
+        J[box_id[1], box_id[2], box_id[3]] += 1
 
         # Closest face and distance to it
         face, ds = closest_edge([z[next_edge[1]], x[next_edge[2]], y[next_edge[3]]],
                                  r, unit_vector)
 
-        τ_cum += ds * α[box_id...]
+        τ_cum += ds * α[box_id[1], box_id[2], box_id[3]]
         r += ds * unit_vector
     end
 
