@@ -96,6 +96,9 @@ function mcrt(atmosphere::Atmosphere,
                 Threads.lock(l); update!(p, jj[])
                 Threads.unlock(l)
 
+                local_destroyed = 0
+                local_scattered = 0
+
                 for i=1:nx
                     for k=1:boundary_λ[i,j]
 
@@ -138,11 +141,11 @@ function mcrt(atmosphere::Atmosphere,
                                     break
                                 # Check if destroyed in next particle interaction
                                 elseif rand() < ε_λ[box_id...]
-                                    Threads.atomic_add!(total_destroyed, 1)
+                                    local_destroyed += 1
                                     break
                                 end
 
-                                Threads.atomic_add!(total_scatterings, 1)
+                                local_scattered += 1
 
                                 # Check if stuck in same box
                                 if box_id == box_id_old
@@ -162,6 +165,8 @@ function mcrt(atmosphere::Atmosphere,
                         J_λ[k,i,j] = packets_λ[k,i,j]
                     end
                 end
+                Threads.atomic_add!(total_destroyed, local_destroyed)
+                Threads.atomic_add!(total_scatterings, local_scattered)
             end
 
             # ===================================================================
@@ -220,6 +225,9 @@ function mcrt(atmosphere::Atmosphere,
                 update!(p, jj[])
                 Threads.unlock(l)
 
+                local_destroyed = 0
+                local_scattered = 0
+
                 for i=1:nx
                     for k=1:boundary_λ[i,j]
 
@@ -240,7 +248,7 @@ function mcrt(atmosphere::Atmosphere,
                             box_id = [k,i,j]
 
                             # Initial position uniformely drawn from box
-                            r = corner .+ (box_dim .* rand(3))
+                            r = Vector(corner .+ (box_dim .* rand(3)))
 
 
                             # Scatter each packet until destroyed,
@@ -274,11 +282,12 @@ function mcrt(atmosphere::Atmosphere,
                                       ε_line[box_id...]        * α_line ) / α
 
                                 if rand() < ε
-                                    Threads.atomic_add!(total_destroyed, 1)
+                                    local_destroyed += 1
                                     break
                                 end
 
-                                Threads.atomic_add!(total_scatterings, 1)
+                                local_scattered += 1
+
 
                                 # Check if stuck in same box
                                 if box_id == box_id_old
@@ -298,6 +307,8 @@ function mcrt(atmosphere::Atmosphere,
                         J_λ[k,i,j] = packets_λ[k,i,j]
                     end
                 end
+                Threads.atomic_add!(total_destroyed, local_destroyed)
+                Threads.atomic_add!(total_scatterings, local_scattered)
             end
 
             # ===================================================================
@@ -688,6 +699,9 @@ function mcrt_continuum(atmosphere::Atmosphere,
             Threads.lock(l); update!(p, jj[])
             Threads.unlock(l)
 
+            local_destroyed = 0
+            local_scattered = 0
+
             for i=1:nx
                 for k=1:boundary_λ[i,j]
 
@@ -725,11 +739,10 @@ function mcrt_continuum(atmosphere::Atmosphere,
                                 break
                             # Check if destroyed in next particle interaction
                             elseif rand() < ε_λ[box_id...]
-                                Threads.atomic_add!(total_destroyed, 1)
+                                local_destroyed += 1
                                 break
                             end
-
-                            Threads.atomic_add!(total_scatterings, 1)
+                            local_scattered += 1
 
                         end
                     end
@@ -738,6 +751,8 @@ function mcrt_continuum(atmosphere::Atmosphere,
                     J_λ[k,i,j] = packets_λ[k,i,j]
                 end
             end
+            Threads.atomic_add!(total_destroyed, local_destroyed)
+            Threads.atomic_add!(total_destroyed, local_scattered)
         end
 
         # ===================================================================
